@@ -1,0 +1,49 @@
+# Changelog
+
+All notable changes to Forest Dash are documented here.
+
+---
+
+## [v3.0] — 2026-03-29
+
+### Added
+
+- **River obstacles** — wide animated water gaps (80–150 px) that scroll with the game. The player must jump over them. Landing on a river at ground level causes an instant game over. Rivers render animated wave lines, sunlight sparkle highlights, and dark muddy banks. A cooldown of 220 frames prevents rivers from spawning back-to-back.
+- **Chocolate collectible** — a brown segmented chocolate bar with a groove pattern and a shine highlight. Worth +20 points on pickup.
+- **Strawberry collectible** — a red teardrop-shaped berry with seeds, green leaves, and a shine highlight. Worth +15 points on pickup.
+- **Collectible sparkle burst** — both collectible types emit a ring of colour-matched particles on collection, plus an expanding ring fade-out animation.
+- **Double jump for Cuy** — the Cuy (guinea pig) character can now double jump, matching the Fox. `MAX_JUMPS` is `2` for both characters.
+
+### Changed
+
+- **Canvas height increased** — desktop canvas raised from `280 px` to `380 px`; mobile from `220 px` to `300 px`. All derived values (ground Y, spawn heights, hitboxes) recalculate proportionally so nothing breaks.
+- **Background simplified** — far tree count reduced from 18 to 6; mid tree count reduced from 10 to 4; the bush layer was removed entirely. The result is a cleaner, less cluttered forest.
+- **HUD updated** — the coin counter (🪙) replaced with a collectibles counter (🍓) that increments for any item picked up regardless of type.
+- **Game Over screen** — "Coins" stat replaced with "Collected" count.
+- **Character selection** — Cuy description updated from "High jump" to "Double jump".
+- **Character name** — "GUINEA PIG" renamed to "CUY" in the selection screen and ready panel title.
+
+### Removed
+
+- **Coins** — the `Coin` class and `CoinManager` class removed entirely.
+- **Day/Night cycle** — the oscillating `skyT` value, night sky gradient, star field, moon rendering, and the `DAY_FRAMES` constant have all been removed. The sky is permanently a bright daytime blue gradient with a glowing sun.
+- **Mode display** (`☀️ DAY` / `🌙 NIGHT`) — the HUD mode label removed alongside the day/night cycle.
+
+### Fixed
+
+- **Panel button cutoff** — overlay panels (character select, ready, game over) now have `overflow-y: auto` and `padding: 20px 12px`. The confirm/start/retry buttons have `flex-shrink: 0` applied, preventing them from being clipped on small or narrow screens. This fixes the "Play button partially cut off" issue on mobile.
+
+---
+
+## [v2.0] — prior
+
+- Initial ES6 rewrite with class-based architecture
+- Fox and Cuy (Guinea Pig) character selection with procedural sprite animation
+- Parallax forest background with far trees, mid trees, and bushes
+- Log obstacles (single and double)
+- Coin collectibles with sparkle animation
+- Day/Night sky cycle (1800-frame period)
+- Web Audio beep engine (no audio files)
+- Particle system for dust and death explosions
+- Responsive canvas sizing for desktop and mobile
+- Session high score tracking
