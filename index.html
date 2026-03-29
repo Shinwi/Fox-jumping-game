@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Fox Runner — Forest Dash</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --forest-dark:  #1a2e1a;
+    --forest-mid:   #2d5a27;
+    --forest-light: #4a8c3f;
+    --sky-day:      #87ceeb;
+    --sky-night:    #0d1b2a;
+    --amber:        #f5a623;
+    --cream:        #fdf6e3;
+    --bark:         #8b5e3c;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--forest-dark);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: 'Press Start 2P', monospace;
+  }
+
+  #game-wrapper {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    width: min(800px, 100vw);
+    padding: 0 8px;
+  }
+
+  #hud {
+    width: 100%;
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--cream);
+    font-size: clamp(8px, 2vw, 13px);
+    text-shadow: 2px 2px 0 var(--forest-dark);
+    padding: 4px 2px;
+  }
+
+  #canvas-container {
+    position: relative;
+    width: 100%;
+    border: 3px solid var(--forest-mid);
+    border-radius: 4px;
+    box-shadow: 0 0 40px rgba(74,140,63,0.3), inset 0 0 20px rgba(0,0,0,0.4);
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+  }
+
+  #overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    background: rgba(13, 27, 26, 0.82);
+    backdrop-filter: blur(2px);
+    transition: opacity 0.3s;
+    z-index: 10;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  #overlay h1 {
+    font-family: 'VT323', monospace;
+    font-size: clamp(28px, 8vw, 56px);
+    color: var(--amber);
+    text-shadow: 3px 3px 0 #7a3d00, 0 0 30px rgba(245,166,35,0.4);
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  #overlay p {
+    font-size: clamp(6px, 2vw, 11px);
+    color: var(--cream);
+    text-align: center;
+    line-height: 2;
+    opacity: 0.9;
+  }
+
+  #btn-start {
+    background: var(--forest-mid);
+    border: 2px solid var(--amber);
+    color: var(--amber);
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(8px, 2vw, 12px);
+    padding: 12px 28px;
+    cursor: pointer;
+    border-radius: 2px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.5);
+    transition: transform 0.1s, box-shadow 0.1s;
+    letter-spacing: 1px;
+  }
+  #btn-start:hover  { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 rgba(0,0,0,0.5); }
+  #btn-start:active { transform: translate(2px,2px);   box-shadow: 2px 2px 0 rgba(0,0,0,0.5); }
+
+  #hi-score-row { font-size: clamp(7px, 1.8vw, 10px); color: #aad4a0; }
+
+  #mobile-btn {
+    display: none;
+    background: rgba(74,140,63,0.25);
+    border: 2px solid var(--forest-light);
+    border-radius: 50px;
+    color: var(--cream);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 10px 24px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  @media (pointer: coarse) { #mobile-btn { display: block; } }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <div id="hud">
+    <span id="score-display">SCORE: 0</span>
+    <span id="hi-display">BEST: 0</span>
+    <span id="mode-display">☀️ DAY</span>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="canvas" width="800" height="260"></canvas>
+
+    <div id="overlay">
+      <h1>🦊 FOX RUNNER</h1>
+      <p>Jump over the logs!<br>SPACE / TAP to jump<br>Double-jump allowed!</p>
+      <button id="btn-start">▶  START</button>
+      <div id="hi-score-row">BEST: <span id="hi-score-val">0</span></div>
+    </div>
+  </div>
+
+  <button id="mobile-btn" id="mobile-jump">TAP TO JUMP</button>
+</div>
+
+<script>
+/* ============================================================
+   FOX RUNNER — Forest Dash
+   Architecture:
+     - Game       : main loop, state machine, day/night cycle
+     - Player     : physics (gravity/velocity), sprite drawing, jump
+     - ObstacleManager : spawning, pooling, scrolling logs
+     - Background : layered parallax forest
+     - Renderer   : all canvas draw calls
+     - InputHandler: keyboard + touch
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  // ── Canvas setup ──────────────────────────────────────────
+  const canvas  = document.getElementById('canvas');
+  const ctx     = canvas.getContext('2d');
+  const W = canvas.width;   // 800
+  const H = canvas.height;  // 260
+
+  // ── Constants ────────────────────────────────────────────
+  const GROUND_Y    = H - 48;        // y-position of ground surface
+  const GRAVITY     = 0.6;
+  const JUMP_FORCE  = -13;
+  const INIT_SPEED  = 5;
+  const MAX_SPEED   = 14;
+  const SPEED_INCR  = 0.0015;        // speed increase per frame
+  const DAY_FRAMES  = 1800;          // ~30 sec per cycle
+
+  // ── State ─────────────────────────────────────────────────
+  let state = 'idle';   // idle | running | dead
+  let score = 0;
+  let hiScore = 0;
+  let speed = INIT_SPEED;
+  let frame = 0;
+  let isNight = false;
+  let skyTransition = 0; // 0..1
+  let animId;
+
+  // ── DOM refs ──────────────────────────────────────────────
+  const overlay      = document.getElementById('overlay');
+  const overlayTitle = overlay.querySelector('h1');
+  const overlayMsg   = overlay.querySelector('p');
+  const btnStart     = document.getElementById('btn-start');
+  const scoreEl      = document.getElementById('score-display');
+  const hiEl         = document.getElementById('hi-display');
+  const modeEl       = document.getElementById('mode-display');
+  const hiValEl      = document.getElementById('hi-score-val');
+  const mobileBtn    = document.getElementById('mobile-btn');
+
+  /* =========================================================
+     AUDIO — tiny Web Audio beeps (no files needed)
+  ========================================================= */
+  let audioCtx;
+  function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+  function beep(freq, dur, type = 'square', vol = 0.15) {
+    try {
+      const ac  = getAudio();
+      const osc = ac.createOscillator();
+      const g   = ac.createGain();
+      osc.connect(g); g.connect(ac.destination);
+      osc.type = type; osc.frequency.value = freq;
+      g.gain.setValueAtTime(vol, ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+      osc.start(); osc.stop(ac.currentTime + dur);
+    } catch (_) {}
+  }
+  const sfxJump  = () => beep(440, 0.12, 'square', 0.1);
+  const sfxDie   = () => { beep(220, 0.15, 'sawtooth', 0.2); setTimeout(() => beep(150, 0.3, 'sawtooth', 0.2), 120); };
+  const sfxScore = () => beep(880, 0.07, 'square', 0.08);
+
+  /* =========================================================
+     PLAYER
+  ========================================================= */
+  const Player = {
+    x: 90,
+    y: GROUND_Y,
+    w: 44,
+    h: 36,
+    vy: 0,
+    jumpsLeft: 2,       // allow double-jump
+    onGround: false,
+    legFrame: 0,        // animation frame counter
+    tailAngle: 0,
+
+    reset() {
+      this.y = GROUND_Y;
+      this.vy = 0;
+      this.jumpsLeft = 2;
+      this.onGround = true;
+      this.legFrame = 0;
+    },
+
+    jump() {
+      if (this.jumpsLeft <= 0) return false;
+      this.vy = JUMP_FORCE;
+      this.jumpsLeft--;
+      this.onGround = false;
+      sfxJump();
+      return true;
+    },
+
+    update() {
+      // Apply gravity
+      this.vy += GRAVITY;
+      this.y  += this.vy;
+
+      // Land on ground
+      if (this.y >= GROUND_Y) {
+        this.y = GROUND_Y;
+        this.vy = 0;
+        this.jumpsLeft = 2;
+        this.onGround = true;
+      } else {
+        this.onGround = false;
+      }
+
+      // Animate legs
+      if (this.onGround) this.legFrame += speed * 0.15;
+      // Tail wave
+      this.tailAngle = Math.sin(frame * 0.08) * 0.3;
+    },
+
+    // Collision hitbox (slightly smaller than visual)
+    hitbox() {
+      return { x: this.x + 6, y: this.y - this.h + 4, w: this.w - 12, h: this.h - 6 };
+    },
+
+    draw(ctx) {
+      const px = this.x;
+      const py = this.y - this.h;  // top-left of sprite
+
+      ctx.save();
+
+      // ── Tail ──────────────────────────────
+      ctx.save();
+      ctx.translate(px + 4, py + 20);
+      ctx.rotate(this.tailAngle - 0.4);
+      // Tail base (fluffy)
+      ctx.fillStyle = '#e8762a';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 14, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // White tip
+      ctx.fillStyle = '#fff8f0';
+      ctx.beginPath();
+      ctx.ellipse(0, -13, 5, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // ── Body ──────────────────────────────
+      ctx.fillStyle = '#e8762a';
+      ctx.beginPath();
+      ctx.ellipse(px + 22, py + 22, 16, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ── Belly ─────────────────────────────
+      ctx.fillStyle = '#f5d0a0';
+      ctx.beginPath();
+      ctx.ellipse(px + 24, py + 24, 9, 8, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ── Legs ──────────────────────────────
+      const legSwing = this.onGround ? Math.sin(this.legFrame) * 6 : 0;
+      ctx.strokeStyle = '#c05a18';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+
+      // Back legs
+      ctx.beginPath();
+      ctx.moveTo(px + 14, py + 30);
+      ctx.lineTo(px + 10 - legSwing * 0.8, py + 36);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px + 18, py + 30);
+      ctx.lineTo(px + 22 + legSwing * 0.8, py + 36);
+      ctx.stroke();
+      // Front legs
+      ctx.beginPath();
+      ctx.moveTo(px + 28, py + 28);
+      ctx.lineTo(px + 24 + legSwing, py + 36);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px + 32, py + 28);
+      ctx.lineTo(px + 36 - legSwing, py + 36);
+      ctx.stroke();
+
+      // ── Head ──────────────────────────────
+      ctx.fillStyle = '#e8762a';
+      ctx.beginPath();
+      ctx.ellipse(px + 33, py + 12, 13, 11, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Snout
+      ctx.fillStyle = '#f5d0a0';
+      ctx.beginPath();
+      ctx.ellipse(px + 42, py + 15, 7, 5, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Nose
+      ctx.fillStyle = '#2d1a0a';
+      ctx.beginPath();
+      ctx.ellipse(px + 47, py + 14, 2.5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eye
+      ctx.fillStyle = '#1a0a00';
+      ctx.beginPath();
+      ctx.arc(px + 39, py + 10, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Eye shine
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(px + 40, py + 9, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ears
+      ctx.fillStyle = '#e8762a';
+      ctx.beginPath();
+      ctx.moveTo(px + 28, py + 5);
+      ctx.lineTo(px + 24, py - 4);
+      ctx.lineTo(px + 33, py + 3);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(px + 37, py + 3);
+      ctx.lineTo(px + 41, py - 5);
+      ctx.lineTo(px + 44, py + 4);
+      ctx.fill();
+      // Inner ear
+      ctx.fillStyle = '#f0a0a0';
+      ctx.beginPath();
+      ctx.moveTo(px + 29, py + 4);
+      ctx.lineTo(px + 26, py - 1);
+      ctx.lineTo(px + 32, py + 3);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(px + 38, py + 3);
+      ctx.lineTo(px + 41, py - 2);
+      ctx.lineTo(px + 43, py + 4);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  };
+
+  /* =========================================================
+     OBSTACLE MANAGER — tree logs
+  ========================================================= */
+  const Obstacles = {
+    list: [],
+    spawnTimer: 0,
+    minGap: 60,   // minimum frames between spawns
+    maxGap: 120,
+
+    reset() {
+      this.list = [];
+      this.spawnTimer = 90;
+    },
+
+    update() {
+      // Countdown to next spawn
+      this.spawnTimer -= 1;
+      if (this.spawnTimer <= 0) {
+        this.spawn();
+        // Gap decreases as game speeds up (harder)
+        const gap = Math.max(this.minGap, this.maxGap - score * 0.3);
+        this.spawnTimer = gap + Math.random() * 40;
+      }
+
+      for (const obs of this.list) obs.x -= speed;
+
+      // Remove off-screen
+      this.list = this.list.filter(o => o.x + o.w > -10);
+    },
+
+    spawn() {
+      // Occasionally spawn double logs
+      const count = Math.random() < 0.25 + score * 0.001 ? 2 : 1;
+      const logW  = 22 + Math.floor(Math.random() * 16);
+      const logH  = 30 + Math.floor(Math.random() * 20);
+      const spacing = count === 2 ? logW + 10 : 0;
+
+      this.list.push({
+        x: W + 20,
+        y: GROUND_Y - logH,
+        w: logW + spacing,
+        logW,
+        logH,
+        count,
+        spacing
+      });
+    },
+
+    draw(ctx) {
+      for (const obs of this.list) drawLog(ctx, obs);
+    }
+  };
+
+  /* Draw a single log obstacle */
+  function drawLog(ctx, obs) {
+    const drawOne = (x) => {
+      const { y, logW: w, logH: h } = obs;
+
+      // Log body
+      const grad = ctx.createLinearGradient(x, y, x + w, y);
+      grad.addColorStop(0,   '#6b3d1e');
+      grad.addColorStop(0.4, '#8b5e3c');
+      grad.addColorStop(1,   '#5a2e10');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, [3, 3, 0, 0]);
+      ctx.fill();
+
+      // Wood grain lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1.5;
+      for (let i = 4; i < h - 2; i += 6) {
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y + i);
+        ctx.lineTo(x + w - 2, y + i);
+        ctx.stroke();
+      }
+
+      // Top cut face (end grain circles)
+      ctx.fillStyle = '#a07050';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + 4, w/2 - 2, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#7a4a28';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + 4, w/3, 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Moss/lichen on top
+      ctx.fillStyle = 'rgba(60,120,40,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + 2, w/2 - 1, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bark bumps
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x + 5 + i * (w/3), y + h * 0.6, 2, 4, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    drawOne(obs.x);
+    if (obs.count === 2) drawOne(obs.x + obs.logW + obs.spacing - obs.logW);
+  }
+
+  /* =========================================================
+     BACKGROUND — parallax forest layers
+  ========================================================= */
+  const Background = {
+    // Each layer: { items, speed multiplier, draw fn }
+    scrollX1: 0,  // far trees
+    scrollX2: 0,  // mid trees
+    scrollX3: 0,  // near bushes
+
+    // Pre-baked "tree" shapes for layers
+    farTrees:  buildTrees(18, 80, 140, '#1e4a18'),
+    midTrees:  buildTrees(10, 110, 180, '#2d6a22'),
+    bushes:    buildBushes(14),
+
+    // Ground pebbles (fixed positions, wrap)
+    pebbles:   buildPebbles(20),
+    pebbleX:   0,
+
+    reset() {
+      this.scrollX1 = 0; this.scrollX2 = 0; this.scrollX3 = 0; this.pebbleX = 0;
+    },
+
+    update() {
+      this.scrollX1 = (this.scrollX1 + speed * 0.15) % W;
+      this.scrollX2 = (this.scrollX2 + speed * 0.35) % W;
+      this.scrollX3 = (this.scrollX3 + speed * 0.6)  % W;
+      this.pebbleX  = (this.pebbleX  + speed)        % W;
+    },
+
+    draw(ctx, t) {
+      // Sky gradient
+      const dayGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+      dayGrad.addColorStop(0, '#6ab0d8');
+      dayGrad.addColorStop(1, '#b8dff0');
+      const nightGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+      nightGrad.addColorStop(0, '#0d1b2a');
+      nightGrad.addColorStop(1, '#1a3a50');
+
+      // Blend day/night
+      ctx.fillStyle = dayGrad;
+      ctx.fillRect(0, 0, W, GROUND_Y);
+      if (t > 0) {
+        ctx.globalAlpha = t;
+        ctx.fillStyle = nightGrad;
+        ctx.fillRect(0, 0, W, GROUND_Y);
+        ctx.globalAlpha = 1;
+      }
+
+      // Stars (night only)
+      if (t > 0.3) {
+        ctx.globalAlpha = (t - 0.3) / 0.7;
+        ctx.fillStyle = 'white';
+        const stars = [[80,20],[200,40],[350,15],[500,35],[650,10],[720,45],[100,50],[430,8]];
+        for (const [sx, sy] of stars) {
+          const r = 1 + Math.sin(frame * 0.05 + sx) * 0.5;
+          ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Sun / Moon
+      if (t < 0.7) {
+        ctx.globalAlpha = 1 - t;
+        ctx.fillStyle = '#ffe066';
+        ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 18;
+        ctx.beginPath(); ctx.arc(680, 38, 22, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+      if (t > 0.3) {
+        ctx.globalAlpha = (t - 0.3) / 0.7;
+        ctx.fillStyle = '#e8e8d0';
+        ctx.shadowColor = '#e8e8d0'; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.arc(680, 38, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+
+      // Layer 1 — far dark trees
+      drawLayer(ctx, this.farTrees, this.scrollX1,  t < 0.5 ? '#1e4a18' : '#0f2a0f');
+      // Layer 2 — mid trees
+      drawLayer(ctx, this.midTrees, this.scrollX2,  t < 0.5 ? '#2d6a22' : '#183a14');
+      // Layer 3 — bushes
+      drawBushLayer(ctx, this.bushes, this.scrollX3, t < 0.5 ? '#3a8c2a' : '#1e4e14');
+
+      // Ground
+      const gGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+      if (t < 0.5) {
+        gGrad.addColorStop(0, '#5a9e30');
+        gGrad.addColorStop(0.2,'#3d7520');
+        gGrad.addColorStop(1,  '#2a5018');
+      } else {
+        gGrad.addColorStop(0, '#2e5018');
+        gGrad.addColorStop(1, '#1a3010');
+      }
+      ctx.fillStyle = gGrad;
+      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+      // Ground line
+      ctx.strokeStyle = t < 0.5 ? '#4a8c24' : '#2a5018';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y); ctx.stroke();
+
+      // Pebbles on ground
+      ctx.fillStyle = t < 0.5 ? '#789060' : '#3a5030';
+      for (const p of this.pebbles) {
+        const px = ((p.x - this.pebbleX % W) + W) % W;
+        ctx.beginPath();
+        ctx.ellipse(px, GROUND_Y + p.oy, p.w, p.h, p.a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  };
+
+  // Procedurally generate tree shapes for a layer
+  function buildTrees(count, minH, maxH, color) {
+    const trees = [];
+    for (let i = 0; i < count; i++) {
+      trees.push({
+        x:  (W / count) * i + Math.random() * 40,
+        h:  minH + Math.random() * (maxH - minH),
+        w:  18 + Math.random() * 22,
+        crownR: 14 + Math.random() * 16,
+      });
+    }
+    return trees;
+  }
+
+  function buildBushes(count) {
+    return Array.from({ length: count }, (_, i) => ({
+      x:  (W / count) * i + Math.random() * 30,
+      r:  12 + Math.random() * 14,
+    }));
+  }
+
+  function buildPebbles(count) {
+    return Array.from({ length: count }, () => ({
+      x:  Math.random() * W,
+      oy: 8 + Math.random() * 18,
+      w:  3 + Math.random() * 7,
+      h:  2 + Math.random() * 4,
+      a:  Math.random() * Math.PI,
+    }));
+  }
+
+  function drawLayer(ctx, trees, scrollX, color) {
+    ctx.fillStyle = color;
+    for (const t of trees) {
+      const tx = ((t.x - scrollX) % W + W) % W;
+      // Trunk
+      ctx.fillRect(tx + t.w/2 - 3, GROUND_Y - t.h, 6, t.h);
+      // Crown (triangle-ish pine)
+      ctx.beginPath();
+      ctx.moveTo(tx + t.w/2, GROUND_Y - t.h - t.crownR);
+      ctx.lineTo(tx, GROUND_Y - t.h + 10);
+      ctx.lineTo(tx + t.w, GROUND_Y - t.h + 10);
+      ctx.closePath();
+      ctx.fill();
+      // Second tier
+      ctx.beginPath();
+      ctx.moveTo(tx + t.w/2, GROUND_Y - t.h - t.crownR * 0.55);
+      ctx.lineTo(tx - 4, GROUND_Y - t.h + 22);
+      ctx.lineTo(tx + t.w + 4, GROUND_Y - t.h + 22);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawBushLayer(ctx, bushes, scrollX, color) {
+    ctx.fillStyle = color;
+    for (const b of bushes) {
+      const bx = ((b.x - scrollX) % W + W) % W;
+      ctx.beginPath();
+      ctx.ellipse(bx, GROUND_Y - b.r * 0.6, b.r, b.r * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(bx - b.r * 0.55, GROUND_Y - b.r * 0.4, b.r * 0.65, b.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(bx + b.r * 0.55, GROUND_Y - b.r * 0.4, b.r * 0.65, b.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /* =========================================================
+     PARTICLES — jump dust + death explosion
+  ========================================================= */
+  const Particles = {
+    list: [],
+
+    spawn(x, y, count, opts = {}) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd   = opts.speed ?? (1 + Math.random() * 3);
+        this.list.push({
+          x, y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd - (opts.upBias ?? 0),
+          life: 1,
+          decay: opts.decay ?? (0.03 + Math.random() * 0.04),
+          r:    opts.r ?? (2 + Math.random() * 3),
+          color: opts.color ?? '#c8a060',
+        });
+      }
+    },
+
+    update() {
+      for (const p of this.list) {
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= p.decay;
+      }
+      this.list = this.list.filter(p => p.life > 0);
+    },
+
+    draw(ctx) {
+      for (const p of this.list) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  };
+
+  /* =========================================================
+     COLLISION DETECTION
+  ========================================================= */
+  function checkCollision() {
+    const hb = Player.hitbox();
+    for (const obs of Obstacles.list) {
+      // Check each log within obstacle
+      const rects = [{ x: obs.x, y: obs.y, w: obs.logW, h: obs.logH }];
+      if (obs.count === 2) rects.push({ x: obs.x + obs.logW + (obs.spacing - obs.logW), y: obs.y, w: obs.logW, h: obs.logH });
+
+      for (const r of rects) {
+        if (
+          hb.x < r.x + r.w &&
+          hb.x + hb.w > r.x &&
+          hb.y < r.y + r.h &&
+          hb.y + hb.h > r.y
+        ) return true;
+      }
+    }
+    return false;
+  }
+
+  /* =========================================================
+     SCORE MILESTONES
+  ========================================================= */
+  let lastMilestone = 0;
+  function checkMilestone() {
+    const m = Math.floor(score / 100) * 100;
+    if (m > 0 && m !== lastMilestone) {
+      lastMilestone = m;
+      sfxScore();
+    }
+  }
+
+  /* =========================================================
+     GAME LOOP
+  ========================================================= */
+  function startGame() {
+    state = 'running';
+    score = 0;
+    speed = INIT_SPEED;
+    frame = 0;
+    isNight = false;
+    skyTransition = 0;
+    lastMilestone = 0;
+    Player.reset();
+    Obstacles.reset();
+    Background.reset();
+    Particles.list = [];
+    overlay.classList.add('hidden');
+  }
+
+  function killPlayer() {
+    state = 'dead';
+    sfxDie();
+    // Explosion particles
+    Particles.spawn(Player.x + 22, Player.y - 18, 20, {
+      speed: 4, upBias: 2, decay: 0.025, r: 4,
+      color: '#e8762a'
+    });
+    Particles.spawn(Player.x + 22, Player.y - 18, 12, {
+      speed: 2, upBias: 1, decay: 0.03, r: 2,
+      color: '#f5d0a0'
+    });
+    if (score > hiScore) hiScore = score;
+    hiValEl.textContent = hiScore;
+    setTimeout(() => showDeathScreen(), 600);
+  }
+
+  function showDeathScreen() {
+    overlayTitle.textContent = '💥 GAME OVER';
+    overlayMsg.innerHTML = `You ran <b>${Math.floor(score)}</b> points!<br>SPACE / TAP to try again`;
+    btnStart.textContent = '↺  RETRY';
+    overlay.classList.remove('hidden');
+  }
+
+  function loop() {
+    animId = requestAnimationFrame(loop);
+
+    if (state === 'running') {
+      frame++;
+      score += speed * 0.04;
+
+      // Speed increase
+      speed = Math.min(MAX_SPEED, INIT_SPEED + frame * SPEED_INCR);
+
+      // Day/Night cycle
+      const cyclePos = (frame % DAY_FRAMES) / DAY_FRAMES;
+      if (cyclePos < 0.5) {
+        skyTransition = cyclePos < 0.1
+          ? cyclePos / 0.1
+          : cyclePos > 0.4
+            ? (0.5 - cyclePos) / 0.1
+            : 1;
+        // Clamp to night phase
+        skyTransition = frame > DAY_FRAMES * 0.25 && frame % DAY_FRAMES < DAY_FRAMES * 0.75
+          ? Math.min(1, skyTransition)
+          : cyclePos > 0.25 ? 1 : cyclePos * 4;
+      } else {
+        skyTransition = 0;
+      }
+      // Simple: just linear oscillate 0→1→0 over DAY_FRAMES
+      skyTransition = 0.5 - 0.5 * Math.cos(2 * Math.PI * cyclePos);
+      isNight = skyTransition > 0.5;
+
+      Background.update();
+      Player.update();
+      Obstacles.update();
+      Particles.update();
+
+      // Dust on landing
+      if (Player.onGround && Math.abs(Player.vy) < 0.5 && frame % 8 === 0) {
+        Particles.spawn(Player.x + 10, GROUND_Y, 2, {
+          speed: 0.8, upBias: 0.5, decay: 0.06, r: 2, color: '#8a7a50'
+        });
+      }
+
+      if (checkCollision()) killPlayer();
+      checkMilestone();
+    } else if (state === 'dead') {
+      Particles.update();
+    }
+
+    // ── RENDER ──────────────────────────────────────────────
+    ctx.clearRect(0, 0, W, H);
+
+    const t = skyTransition;
+    Background.draw(ctx, t);
+
+    if (state !== 'idle') {
+      Obstacles.draw(ctx);
+      Particles.draw(ctx);
+      if (state === 'running') Player.draw(ctx);
+    }
+
+    // HUD update
+    scoreEl.textContent = 'SCORE: ' + Math.floor(score);
+    hiEl.textContent    = 'BEST: ' + Math.floor(hiScore);
+    modeEl.textContent  = isNight ? '🌙 NIGHT' : '☀️ DAY';
+  }
+
+  /* =========================================================
+     INPUT HANDLER
+  ========================================================= */
+  const Input = {
+    init() {
+      // Keyboard
+      document.addEventListener('keydown', e => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+          e.preventDefault();
+          this.act();
+        }
+      });
+
+      // Touch / click on canvas area
+      const canvasContainer = document.getElementById('canvas-container');
+      canvasContainer.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        this.act();
+      });
+
+      // Mobile button
+      mobileBtn.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        this.act();
+      });
+
+      // Start button
+      btnStart.addEventListener('click', () => {
+        startGame();
+      });
+    },
+
+    act() {
+      if (state === 'idle') { startGame(); return; }
+      if (state === 'running') { Player.jump(); return; }
+      // dead state: start handled by overlay button
+    }
+  };
+
+  /* =========================================================
+     INIT
+  ========================================================= */
+  Input.init();
+  loop();
+
+  // Draw a nice idle preview
+  // (the loop already runs, showing Background without player)
+
+})();
+</script>
+</body>
+</html>
