@@ -45,8 +45,19 @@ html, body {
   padding: 2px 4px; gap: 6px;
 }
 #hud-collect {
-  display: flex; align-items: center; gap: 4px;
-  color: #ff9966; text-shadow: 1px 1px 0 #803010;
+  display: flex; align-items: center; gap: 10px;
+}
+#hud-choco {
+  display: flex; align-items: center; gap: 3px;
+  color: #d2691e; text-shadow: 1px 1px 0 #6a2800;
+}
+#hud-straw {
+  display: flex; align-items: center; gap: 3px;
+  color: #ff6688; text-shadow: 1px 1px 0 #800030;
+}
+#hud-grape {
+  display: flex; align-items: center; gap: 3px;
+  color: #c080e8; text-shadow: 1px 1px 0 #5a1880;
 }
 
 /* ── CANVAS CONTAINER ── */
@@ -135,17 +146,55 @@ canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; 
 
 @keyframes hudFlash {
   0%,100% { transform: scale(1); }
-  50%      { transform: scale(1.4); color: #fff; }
+  50%      { transform: scale(1.45); color: #fff; }
 }
 .collect-flash { animation: hudFlash 0.25s ease; }
+
+/* ── Portrait-mode rotation warning (touch devices only) ── */
+@keyframes rotateHint {
+  0%, 100% { transform: rotate(0deg);  }
+  40%, 60% { transform: rotate(90deg); }
+}
+#portrait-warning {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--forest-dark);
+  flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+}
+#portrait-warning .rotate-icon {
+  font-size: 56px;
+  animation: rotateHint 2s ease-in-out infinite;
+  transform-origin: center;
+}
+#portrait-warning p {
+  color: var(--cream);
+  font-size: clamp(7px, 3.5vw, 12px);
+  text-align: center; line-height: 2.4;
+  text-shadow: 2px 2px 0 #000;
+}
+/* Show only on coarse-pointer (touch) devices in portrait orientation */
+@media (pointer: coarse) and (orientation: portrait) {
+  #portrait-warning { display: flex; }
+}
 </style>
 </head>
 <body>
+
+<!-- Shown on touch devices in portrait mode; hidden automatically in landscape -->
+<div id="portrait-warning">
+  <div class="rotate-icon">📱</div>
+  <p>Rotate your phone<br>to play in landscape!</p>
+</div>
+
 <div id="game-wrapper">
 
   <div id="hud">
     <span id="score-display">SCORE: 0</span>
-    <div id="hud-collect">🍓 <span id="collect-display">0</span></div>
+    <div id="hud-collect">
+      <span id="hud-choco">🍫 <span id="choco-display">0</span></span>
+      <span id="hud-straw">🍓 <span id="straw-display">0</span></span>
+      <span id="hud-grape">🍇 <span id="grape-display">0</span></span>
+    </div>
     <span id="hi-display">BEST: 0</span>
   </div>
 
@@ -164,7 +213,7 @@ canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; 
         </div>
         <div class="char-card" data-char="guinea">
           <canvas class="char-preview" id="prev-guinea" width="64" height="64"></canvas>
-          <div class="char-name">🐹 CUY</div>
+          <div class="char-name">🐹 CUYCITA</div>
           <div class="char-desc">Bouncy &amp; cute<br>Double jump</div>
         </div>
       </div>
@@ -223,14 +272,19 @@ const MAX_SPEED  = 15;
 const SPEED_INCR = 0.0014;
 const ANIM_FPS   = 10;
 
-const COLLECT_SCORE = { chocolate: 20, strawberry: 15 };
+const COLLECT_SCORE = { chocolate: 20, strawberry: 15, grape: 25 };
 
 /* ── RESPONSIVE SIZING ─────────────────────────────────────────── */
 function getCanvasDims() {
   const vw = window.innerWidth;
+  const vh = window.innerHeight;
   const isMobile = vw <= MOBILE_BREAK;
   const W = isMobile ? Math.min(vw - 16, CANVAS_W_MOBILE) : Math.min(vw - 32, CANVAS_W_MAX);
-  const H = isMobile ? CANVAS_HEIGHTS.mobile : CANVAS_HEIGHTS.desktop;
+  let   H = isMobile ? CANVAS_HEIGHTS.mobile : CANVAS_HEIGHTS.desktop;
+  // Cap height so the canvas always fits inside the viewport.
+  // 72px accounts for the HUD bar + gap + mobile jump button area.
+  const maxH = Math.max(140, vh - 72);
+  if (H > maxH) H = maxH;
   return { W, H, isMobile };
 }
 
@@ -411,6 +465,32 @@ function drawGuineaFrame(cx, W, H, legSwing, jumping) {
   [[57,H-22,W-2,H-20],[57,H-22,W-2,H-24],[57,H-22,W-2,H-26]].forEach(([x1,y1,x2,y2]) => {
     cx.beginPath(); cx.moveTo(x1,y1); cx.lineTo(x2,y2); cx.stroke();
   });
+
+  // ── Pink bow ribbon on top of head ──
+  const bx = 44, by = H - 46; // bow center, just above the ear
+  // Left wing
+  cx.fillStyle = '#ff69b4';
+  cx.save(); cx.translate(bx - 9, by); cx.rotate(-0.45);
+  cx.beginPath(); cx.ellipse(0, 0, 10, 5.5, 0, 0, Math.PI*2); cx.fill();
+  cx.restore();
+  // Right wing
+  cx.fillStyle = '#ff69b4';
+  cx.save(); cx.translate(bx + 9, by); cx.rotate(0.45);
+  cx.beginPath(); cx.ellipse(0, 0, 10, 5.5, 0, 0, Math.PI*2); cx.fill();
+  cx.restore();
+  // Wing shine highlights
+  cx.fillStyle = 'rgba(255,255,255,0.32)';
+  cx.save(); cx.translate(bx - 9, by - 1); cx.rotate(-0.45);
+  cx.beginPath(); cx.ellipse(0, -1, 5, 2.2, 0, 0, Math.PI*2); cx.fill();
+  cx.restore();
+  cx.save(); cx.translate(bx + 9, by - 1); cx.rotate(0.45);
+  cx.beginPath(); cx.ellipse(0, -1, 5, 2.2, 0, 0, Math.PI*2); cx.fill();
+  cx.restore();
+  // Center knot
+  cx.fillStyle = '#cc3380';
+  cx.beginPath(); cx.arc(bx, by, 4.5, 0, Math.PI*2); cx.fill();
+  cx.fillStyle = '#ff85c0';
+  cx.beginPath(); cx.arc(bx, by, 2.5, 0, Math.PI*2); cx.fill();
 }
 
 /* ── PLAYER ────────────────────────────────────────────────────── */
@@ -714,9 +794,11 @@ class Collectible {
       ctx.beginPath(); ctx.arc(this.x, cy, this.r + t * 14, 0, Math.PI*2); ctx.stroke();
       ctx.globalAlpha = 1;
     } else {
-      this.kind === 'chocolate' ? this._drawChoco(ctx, cy) : this._drawStrawberry(ctx, cy);
+      if      (this.kind === 'chocolate') this._drawChoco(ctx, cy);
+      else if (this.kind === 'strawberry') this._drawStrawberry(ctx, cy);
+      else                                 this._drawGrape(ctx, cy);
     }
-    const sparkColor = this.kind === 'chocolate' ? '#d2691e' : '#ff6688';
+    const sparkColor = this.kind === 'chocolate' ? '#d2691e' : this.kind === 'strawberry' ? '#ff6688' : '#c080e8';
     for (const s of this._sparkles) {
       ctx.globalAlpha = s.life;
       ctx.fillStyle = sparkColor;
@@ -771,6 +853,42 @@ class Collectible {
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.beginPath(); ctx.ellipse(this.x - r*0.3, cy - r*0.08, r*0.22, r*0.32, -0.3, 0, Math.PI*2); ctx.fill();
   }
+
+  _drawGrape(ctx, cy) {
+    // Grape bunch: grid of purple circles + green stem & leaf
+    const r  = this.r;
+    const cx = this.x;
+    // Grape positions: 3 on bottom row, 2 middle, 1 top (pyramid)
+    const beads = [
+      { ox: -r*0.7, oy:  r*0.55 }, { ox: 0,      oy:  r*0.55 }, { ox:  r*0.7, oy:  r*0.55 },
+      { ox: -r*0.35,oy:  0      }, { ox:  r*0.35, oy:  0      },
+      { ox:  0,     oy: -r*0.52 },
+    ];
+    const br = r * 0.42; // bead radius
+    // Draw all grape beads (back pass — darker)
+    ctx.fillStyle = '#7b3fb0';
+    for (const b of beads) {
+      ctx.beginPath(); ctx.arc(cx + b.ox, cy + b.oy, br, 0, Math.PI*2); ctx.fill();
+    }
+    // Front pass — main purple
+    ctx.fillStyle = '#a855d4';
+    for (const b of beads) {
+      ctx.beginPath(); ctx.arc(cx + b.ox + 0.5, cy + b.oy - 0.5, br - 0.8, 0, Math.PI*2); ctx.fill();
+    }
+    // Shine on each bead
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    for (const b of beads) {
+      ctx.beginPath(); ctx.arc(cx + b.ox - br*0.28, cy + b.oy - br*0.28, br * 0.32, 0, Math.PI*2); ctx.fill();
+    }
+    // Stem
+    ctx.strokeStyle = '#4a7a20'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx, cy - r*0.52 - br); ctx.lineTo(cx, cy - r - 2); ctx.stroke();
+    // Leaf
+    ctx.fillStyle = '#3a8a18';
+    ctx.save(); ctx.translate(cx + 4, cy - r - 1); ctx.rotate(0.5);
+    ctx.beginPath(); ctx.ellipse(0, 0, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
 }
 
 /* ── COLLECTIBLE MANAGER ───────────────────────────────────────── */
@@ -796,26 +914,31 @@ class CollectibleManager {
   }
 
   _spawn() {
-    const x    = this.canvasW + 20;
-    const kind = Math.random() < 0.5 ? 'chocolate' : 'strawberry';
+    const x = this.canvasW + 20;
+    // Roughly equal thirds: chocolate / strawberry / grape
+    const r    = Math.random();
+    const kind = r < 0.33 ? 'chocolate' : r < 0.66 ? 'strawberry' : 'grape';
     // 40% mid-air (rewards jumping), 60% near ground
-    const y    = Math.random() < 0.4
+    const y = Math.random() < 0.4
       ? this.groundY - 70 - Math.random() * 50
       : this.groundY - 18;
     this.collectibles.push(new Collectible(x, y, kind));
   }
 
-  /* Check player hitbox vs all collectibles; returns { total score, count } */
+  /* Check player hitbox vs all collectibles; returns { choco, straw, grape } counts */
   collectWith(hb) {
-    let total = 0, count = 0;
+    let choco = 0, straw = 0, grape = 0;
     for (const c of this.collectibles) {
       if (c.collected) continue;
       const ch = c.hitbox();
       if (hb.x < ch.x+ch.w && hb.x+hb.w > ch.x && hb.y < ch.y+ch.h && hb.y+hb.h > ch.y) {
-        c.collect(); total += COLLECT_SCORE[c.kind]; count++;
+        c.collect();
+        if      (c.kind === 'chocolate') choco++;
+        else if (c.kind === 'strawberry') straw++;
+        else                              grape++;
       }
     }
-    return { total, count };
+    return { choco, straw, grape };
   }
 
   draw(ctx) { for (const c of this.collectibles) c.draw(ctx); }
@@ -825,11 +948,12 @@ class CollectibleManager {
 class Background {
   constructor(W, H, groundY) {
     this.W = W; this.H = H; this.groundY = groundY;
-    this.scrollX1 = 0; this.scrollX2 = 0; this.pebbleX = 0;
+    this.scrollX1 = 0; this.scrollX2 = 0; this.pebbleX = 0; this.cloudX = 0;
     // Reduced tree counts: 6 far, 4 mid (was 18 / 10)
     this.farTrees = this._buildTrees(6, 75,  135, W);
     this.midTrees = this._buildTrees(4, 100, 175, W);
     this.pebbles  = this._buildPebbles(12, W);
+    this.clouds   = this._buildClouds(5, W);
   }
 
   _buildTrees(count, minH, maxH, W) {
@@ -848,12 +972,23 @@ class Background {
     }));
   }
 
-  reset() { this.scrollX1 = 0; this.scrollX2 = 0; this.pebbleX = 0; }
+  /* Clouds: each has a position, scale, and individual drift multiplier */
+  _buildClouds(count, W) {
+    return Array.from({ length: count }, (_, i) => ({
+      x:     (W / count) * i + Math.random() * (W / count),
+      y:     18 + Math.random() * 38,           // stays in upper sky
+      scale: 0.65 + Math.random() * 0.7,        // size variety
+      drift: 0.5 + Math.random() * 0.8,         // per-cloud speed multiplier
+    }));
+  }
+
+  reset() { this.scrollX1 = 0; this.scrollX2 = 0; this.pebbleX = 0; this.cloudX = 0; }
 
   update(speed) {
     this.scrollX1 = (this.scrollX1 + speed * 0.13) % this.W;
     this.scrollX2 = (this.scrollX2 + speed * 0.33) % this.W;
     this.pebbleX  = (this.pebbleX  + speed)        % this.W;
+    this.cloudX   = (this.cloudX   + speed * 0.05) % this.W; // clouds drift slowly
   }
 
   draw(ctx) {
@@ -869,6 +1004,9 @@ class Background {
     ctx.fillStyle = '#ffe066'; ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 22;
     ctx.beginPath(); ctx.arc(W * 0.84, 36, 22, 0, Math.PI*2); ctx.fill();
     ctx.shadowBlur = 0;
+
+    // Clouds (drawn after sun so they can overlap it naturally)
+    this._drawClouds(ctx);
 
     // Far trees (darker, slow parallax)
     this._drawTrees(ctx, this.farTrees, this.scrollX1, '#1a5a16');
@@ -890,6 +1028,33 @@ class Background {
       const px = ((p.x - this.pebbleX % W) + W) % W;
       ctx.beginPath(); ctx.ellipse(px, GY + p.oy, p.w, p.h, p.a, 0, Math.PI*2); ctx.fill();
     }
+  }
+
+  _drawClouds(ctx) {
+    const { W } = this;
+    for (const c of this.clouds) {
+      // Each cloud drifts at its own speed relative to the shared cloudX base
+      const cx = ((c.x - this.cloudX * c.drift) % W + W * 4) % W;
+      this._drawCloud(ctx, cx, c.y, c.scale);
+    }
+  }
+
+  /* Draw a single fluffy cloud as overlapping ellipses */
+  _drawCloud(ctx, cx, cy, s) {
+    ctx.fillStyle = 'rgba(255,255,255,0.86)';
+    // Main body
+    ctx.beginPath(); ctx.ellipse(cx,       cy,      30*s, 14*s, 0, 0, Math.PI*2); ctx.fill();
+    // Left bump
+    ctx.beginPath(); ctx.ellipse(cx-20*s,  cy+4*s,  16*s,  9*s, 0, 0, Math.PI*2); ctx.fill();
+    // Right bump
+    ctx.beginPath(); ctx.ellipse(cx+20*s,  cy+4*s,  18*s,  9*s, 0, 0, Math.PI*2); ctx.fill();
+    // Top-left puff
+    ctx.beginPath(); ctx.ellipse(cx-10*s,  cy-8*s,  14*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+    // Top-right puff
+    ctx.beginPath(); ctx.ellipse(cx+10*s,  cy-6*s,  13*s,  9*s, 0, 0, Math.PI*2); ctx.fill();
+    // Soft shadow underside
+    ctx.fillStyle = 'rgba(180,210,240,0.35)';
+    ctx.beginPath(); ctx.ellipse(cx, cy+8*s, 26*s, 7*s, 0, 0, Math.PI*2); ctx.fill();
   }
 
   _drawTrees(ctx, trees, scrollX, color) {
@@ -964,20 +1129,24 @@ class Game {
     this.sprites   = new SpriteRenderer();
     this.particles = new ParticleSystem();
 
-    this.state        = 'char-select';
-    this.charKey      = 'fox';
-    this.score        = 0;
-    this.collectCount = 0;
-    this.hiScore      = 0;
+    this.state      = 'char-select';
+    this.charKey    = 'fox';
+    this.score      = 0;
+    this.chocoCount = 0;
+    this.strawCount = 0;
+    this.grapeCount = 0;
+    this.hiScore    = 0;
     this.speed        = INIT_SPEED;
     this.frame        = 0;
     this._lastMile    = 0;
     this._lastTime    = null;
 
     // DOM refs
-    this.scoreEl   = document.getElementById('score-display');
-    this.collectEl = document.getElementById('collect-display');
-    this.hiEl      = document.getElementById('hi-display');
+    this.scoreEl  = document.getElementById('score-display');
+    this.chocoEl  = document.getElementById('choco-display');
+    this.strawEl  = document.getElementById('straw-display');
+    this.grapeEl  = document.getElementById('grape-display');
+    this.hiEl     = document.getElementById('hi-display');
     this.hiValEl   = document.getElementById('hi-score-val');
     this.hiValEl2  = document.getElementById('hi-score-val2');
     this.deadMsg   = document.getElementById('dead-msg');
@@ -1038,7 +1207,7 @@ class Game {
   }
 
   _goReady() {
-    const names = { fox: '🦊 FOX RUNNER', guinea: '🐹 CUY DASH' };
+    const names = { fox: '🦊 FOX RUNNER', guinea: '🐹 CUYCITA DASH' };
     this._readyTitle.textContent = names[this.charKey];
     this._hide(this._charPanel); this._show(this._readyPanel);
     this.state = 'ready';
@@ -1051,10 +1220,12 @@ class Game {
 
   startGame() {
     if (!this.bg) this._goReady();
-    this.state        = 'running';
-    this.score        = 0;
-    this.collectCount = 0;
-    this.speed        = INIT_SPEED;
+    this.state      = 'running';
+    this.score      = 0;
+    this.chocoCount = 0;
+    this.strawCount = 0;
+    this.grapeCount = 0;
+    this.speed      = INIT_SPEED;
     this.frame        = 0;
     this._lastMile    = 0;
 
@@ -1081,7 +1252,7 @@ class Game {
     if (this.score > this.hiScore) this.hiScore = this.score;
     this.hiValEl.textContent  = Math.floor(this.hiScore);
     this.hiValEl2.textContent = Math.floor(this.hiScore);
-    this.deadMsg.innerHTML    = `Score: <b>${Math.floor(this.score)}</b> &nbsp;|&nbsp; Collected: <b>${this.collectCount}</b>`;
+    this.deadMsg.innerHTML    = `Score: <b>${Math.floor(this.score)}</b> &nbsp;|&nbsp; 🍫 <b>${this.chocoCount}</b> &nbsp; 🍓 <b>${this.strawCount}</b> &nbsp; 🍇 <b>${this.grapeCount}</b>`;
     setTimeout(() => this._show(this._deadPanel), 550);
   }
 
@@ -1107,13 +1278,25 @@ class Game {
       this.collectMgr.update(this.speed, this.frame, this.score);
       this.particles.update();
 
-      // Collectible pickup
-      const { total, count } = this.collectMgr.collectWith(this.player.hitbox());
-      if (count > 0) {
-        this.collectCount += count;
-        this.score        += total;
+      // Collectible pickup — flash the matching HUD counter
+      const { choco, straw, grape } = this.collectMgr.collectWith(this.player.hitbox());
+      if (choco > 0) {
+        this.chocoCount += choco;
+        this.score      += COLLECT_SCORE.chocolate * choco;
         this.audio.collect();
-        this._flashHud();
+        this._flashHud('chocolate');
+      }
+      if (straw > 0) {
+        this.strawCount += straw;
+        this.score      += COLLECT_SCORE.strawberry * straw;
+        this.audio.collect();
+        this._flashHud('strawberry');
+      }
+      if (grape > 0) {
+        this.grapeCount += grape;
+        this.score      += COLLECT_SCORE.grape * grape;
+        this.audio.collect();
+        this._flashHud('grape');
       }
 
       // Obstacle / river collision → game over
@@ -1136,9 +1319,11 @@ class Game {
       this.player.draw(ctx);
 
       // Update HUD text
-      this.scoreEl.textContent   = 'SCORE: ' + Math.floor(this.score);
-      this.collectEl.textContent = this.collectCount;
-      this.hiEl.textContent      = 'BEST: '  + Math.floor(this.hiScore);
+      this.scoreEl.textContent = 'SCORE: ' + Math.floor(this.score);
+      this.chocoEl.textContent = this.chocoCount;
+      this.strawEl.textContent = this.strawCount;
+      this.grapeEl.textContent = this.grapeCount;
+      this.hiEl.textContent    = 'BEST: '  + Math.floor(this.hiScore);
 
     } else if (this.state === 'ready' || this.state === 'char-select') {
       if (this.bg) { this.bg.update(INIT_SPEED * 0.4); this.bg.draw(ctx); }
@@ -1152,8 +1337,10 @@ class Game {
     }
   }
 
-  _flashHud() {
-    const el = document.getElementById('hud-collect');
+  /* Flash the matching collectible counter in the HUD */
+  _flashHud(kind) {
+    const ids = { chocolate: 'hud-choco', strawberry: 'hud-straw', grape: 'hud-grape' };
+    const el = document.getElementById(ids[kind]);
     el.classList.remove('collect-flash');
     void el.offsetWidth; // force reflow to restart animation
     el.classList.add('collect-flash');
