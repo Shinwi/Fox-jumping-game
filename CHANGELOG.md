@@ -4,6 +4,19 @@ All notable changes to Forest Dash are documented here.
 
 ---
 
+## [v3.3] — 2026-03-29
+
+### Added
+
+- **Portrait-mode rotation warning** — on touch devices held in portrait orientation, a full-screen overlay (`#portrait-warning`) fades in with an animated rotating phone icon and a "Rotate your phone to play in landscape!" message. It disappears automatically when the device is rotated. Implemented purely in CSS using `@media (pointer: coarse) and (orientation: portrait)` — zero JavaScript required.
+- **Landscape mobile canvas sizing** — `getCanvasDims()` now reads `window.innerHeight` and caps the canvas height to `vh - 72px`. This ensures the canvas never overflows the viewport in landscape on phones (e.g. a 375px-tall iPhone landscape viewport gets a ~303px canvas instead of the default 380px).
+
+### Reverted
+
+- **Keyboard button navigation** — the arrow-key panel navigation, char-card `tabindex`, auto-focus on panel open, pixel focus rings, and `InputHandler` Space-key changes introduced in this session were reverted at user request. `InputHandler` is back to its original behaviour (Space or ArrowUp = act).
+
+---
+
 ## [v3.2] — 2026-03-29
 
 ### Added

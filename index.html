@@ -149,9 +149,43 @@ canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; 
   50%      { transform: scale(1.45); color: #fff; }
 }
 .collect-flash { animation: hudFlash 0.25s ease; }
+
+/* ── Portrait-mode rotation warning (touch devices only) ── */
+@keyframes rotateHint {
+  0%, 100% { transform: rotate(0deg);  }
+  40%, 60% { transform: rotate(90deg); }
+}
+#portrait-warning {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--forest-dark);
+  flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+}
+#portrait-warning .rotate-icon {
+  font-size: 56px;
+  animation: rotateHint 2s ease-in-out infinite;
+  transform-origin: center;
+}
+#portrait-warning p {
+  color: var(--cream);
+  font-size: clamp(7px, 3.5vw, 12px);
+  text-align: center; line-height: 2.4;
+  text-shadow: 2px 2px 0 #000;
+}
+/* Show only on coarse-pointer (touch) devices in portrait orientation */
+@media (pointer: coarse) and (orientation: portrait) {
+  #portrait-warning { display: flex; }
+}
 </style>
 </head>
 <body>
+
+<!-- Shown on touch devices in portrait mode; hidden automatically in landscape -->
+<div id="portrait-warning">
+  <div class="rotate-icon">📱</div>
+  <p>Rotate your phone<br>to play in landscape!</p>
+</div>
+
 <div id="game-wrapper">
 
   <div id="hud">
@@ -243,9 +277,14 @@ const COLLECT_SCORE = { chocolate: 20, strawberry: 15, grape: 25 };
 /* ── RESPONSIVE SIZING ─────────────────────────────────────────── */
 function getCanvasDims() {
   const vw = window.innerWidth;
+  const vh = window.innerHeight;
   const isMobile = vw <= MOBILE_BREAK;
   const W = isMobile ? Math.min(vw - 16, CANVAS_W_MOBILE) : Math.min(vw - 32, CANVAS_W_MAX);
-  const H = isMobile ? CANVAS_HEIGHTS.mobile : CANVAS_HEIGHTS.desktop;
+  let   H = isMobile ? CANVAS_HEIGHTS.mobile : CANVAS_HEIGHTS.desktop;
+  // Cap height so the canvas always fits inside the viewport.
+  // 72px accounts for the HUD bar + gap + mobile jump button area.
+  const maxH = Math.max(140, vh - 72);
+  if (H > maxH) H = maxH;
   return { W, H, isMobile };
 }
 
